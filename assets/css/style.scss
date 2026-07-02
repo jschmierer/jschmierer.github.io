@@ -18,12 +18,21 @@
 
   aspect-ratio: 1 / 1;
   min-height: 140px;
+
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 12px;
+
+  text-decoration: none;
+  color: white;
+
+  transition: transform 0.25s ease, border-color 0.25s ease;
 }
 
 .card:hover {
   transform: translateY(-6px);
-  border-color: #00ffcc;
-  box-shadow: 0 10px 25px rgba(0, 255, 204, 0.15);
+  animation: rainbowGlow 2.5s infinite linear;
+  border-color: transparent;
 }
 
 .card:active {
@@ -34,8 +43,27 @@
   margin: 0;
 }
 
-.card {
-  color: white;
+@keyframes rainbowGlow {
+  0% {
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.4),
+                0 0 30px rgba(255, 0, 0, 0.2);
+  }
+  25% {
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.4),
+                0 0 30px rgba(0, 255, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(0, 0, 255, 0.4),
+                0 0 30px rgba(0, 0, 255, 0.2);
+  }
+  75% {
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.4),
+                0 0 30px rgba(255, 255, 0, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.4),
+                0 0 30px rgba(255, 0, 0, 0.2);
+  }
 }
 
 @media (max-width: 900px) {
