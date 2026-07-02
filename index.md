@@ -20,7 +20,7 @@ title: Jakob Schmierer's Portfolio
   <h2>Tic-Tac-Toe</h2>
 </a>
 
-<a class="card" href="#">
+<a class="card" href="https://github.com/jschmierer/conways-game-of-life">
   <h2>Game of Life</h2>
 </a>
 
