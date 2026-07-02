@@ -1,6 +1,5 @@
 ---
 ---
-
 @import "{{ site.theme }}";
 
 .grid {
@@ -12,10 +11,14 @@
 }
 
 .card {
-  background: rgba(0,0,0,0.3);
+  display: block;
+  background: rgba(0, 0, 0, 0.3);
   border: 1px solid #333;
   padding: 20px;
   border-radius: 12px;
+  text-decoration: none;
+  color: white;
+
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
@@ -25,9 +28,16 @@
   box-shadow: 0 10px 25px rgba(0, 255, 204, 0.15);
 }
 
-.card a {
-  color: #00ffcc;
-  text-decoration: none;
+.card:active {
+  transform: translateY(-2px);
+}
+
+.card h2 {
+  margin: 0;
+}
+
+.card {
+  color: white;
 }
 
 @media (max-width: 900px) {
