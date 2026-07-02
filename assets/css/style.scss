@@ -11,15 +11,13 @@
 }
 
 .card {
-  display: block;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid #333;
-  padding: 20px;
-  border-radius: 12px;
-  text-decoration: none;
-  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  aspect-ratio: 1 / 1;
+  min-height: 140px;
 }
 
 .card:hover {
