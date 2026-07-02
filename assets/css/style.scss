@@ -16,8 +16,7 @@
   justify-content: center;
   text-align: center;
 
-  aspect-ratio: 1 / 1;
-  min-height: 140px;
+  aspect-ratio: 2.2 / 1;
 
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid #333;
@@ -26,7 +25,7 @@
   text-decoration: none;
   color: white;
 
-  transition: transform 0.25s ease, border-color 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .card:hover {
