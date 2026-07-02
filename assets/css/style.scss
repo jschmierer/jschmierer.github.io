@@ -2,3 +2,30 @@
 ---
 
 @import "{{ site.theme }}";
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.card {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid #333;
+  padding: 20px;
+  border-radius: 12px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.card:hover {
+  transform: translateY(-6px);
+  border-color: #00ffcc;
+  box-shadow: 0 10px 25px rgba(0, 255, 204, 0.15);
+}
+
+.card a {
+  color: #00ffcc;
+  text-decoration: none;
+}
