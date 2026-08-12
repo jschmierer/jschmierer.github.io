@@ -2,6 +2,17 @@
 title: Jakob Schmierer's Portfolio
 ---
 
+# Featured AI Project
+
+<div class="grid">
+
+<a class="card" href="https://vox-coach-ai.vercel.app">
+  <h2>VoxCoach AI</h2>
+  <p>An AI interview coach (for college or for jobs)</p>
+</a>
+
+</div>
+
 # Python Projects
 
 <div class="grid">
