@@ -8,7 +8,7 @@ title: Jakob Schmierer's Portfolio
 
 <a class="card" href="https://vox-coach-ai.vercel.app">
   <h2>VoxCoach AI</h2>
-  <p>An AI interview coach (for college or for jobs)</p>
+  <p>An AI interview coach</p>
 </a>
 
 </div>
