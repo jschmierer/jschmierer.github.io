@@ -1,0 +1,63 @@
+<div class="project-page"
+     data-repo="{{ page.repo }}"
+     data-project="{{ page.project_id }}"
+     data-mode="{{ page.preview_mode }}"
+     data-entry="{{ page.entry_file }}">
+  <div class="project-topbar">
+    <a class="project-top-link" href="{{ '/' | relative_url }}">← Back to all projects</a>
+    <a class="project-top-link" href="https://github.com/jschmierer/{{ page.repo }}" target="_blank" rel="noopener noreferrer">Open GitHub repository ↗</a>
+  </div>
+
+  <div class="project-workspace">
+    <section class="code-window" aria-label="Project source code">
+      <aside class="file-sidebar" data-file-sidebar>
+        <div class="files-heading">
+          <span>Files</span>
+          <button type="button" class="tiny-icon-button" data-collapse-files aria-label="Collapse file menu" title="Collapse file menu">‹</button>
+        </div>
+        <div class="file-list" data-file-list>
+          <div class="viewer-message">Loading files from GitHub…</div>
+        </div>
+      </aside>
+
+      <div class="code-main">
+        <div class="pane-titlebar">
+          <button type="button" class="tiny-icon-button show-files-button" data-show-files title="Show file menu" aria-label="Show file menu">›</button>
+          <span class="pane-title">Code</span>
+          <span class="active-file" data-active-file>Loading…</span>
+          <a class="tiny-link" data-open-file href="https://github.com/jschmierer/{{ page.repo }}" target="_blank" rel="noopener noreferrer">View file ↗</a>
+        </div>
+        <div class="code-scroll" data-code-scroll>
+          <pre class="source-code"><code data-source-code># Source files load directly from the public GitHub repository.
+# If the repository can't be reached, try again or open GitHub.</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="preview-window" aria-label="Project preview">
+      <div class="pane-titlebar preview-titlebar">
+        <span class="pane-title" data-preview-heading>Terminal</span>
+        <span class="preview-status" data-preview-status>Ready</span>
+        <div class="preview-actions">
+          <button type="button" class="preview-button" data-run-project hidden>Run Python</button>
+          <button type="button" class="preview-button secondary" data-reset-project hidden>Reset</button>
+          <button type="button" class="preview-button secondary" data-clear-terminal hidden>Clear</button>
+        </div>
+      </div>
+      <div class="preview-body">
+        <div class="terminal-output" data-terminal-output aria-live="polite">Preparing preview…</div>
+        <div class="turtle-stage" id="turtle-stage" data-turtle-stage hidden></div>
+        <div class="terminal-controls" data-terminal-controls></div>
+        <div class="preview-footnote" data-preview-footnote></div>
+      </div>
+    </section>
+  </div>
+  <p class="project-runtime-note">Source code is loaded from GitHub. Interactive previews run in your browser and may not support every Python library or operating-system feature.</p>
+</div>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
+<script src="{{ '/assets/js/project-viewer.js' | relative_url }}"></script>
