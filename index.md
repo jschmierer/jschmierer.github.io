@@ -4,17 +4,19 @@ title: Jakob Schmierer's Portfolio
 
 # Featured Projects
 
-<div class="grid">
+<div class="grid featured-grid">
 
-<a class="card" href="https://vox-coach-ai.vercel.app">
+<a class="card" href="{{ '/projects/voxcoach-ai/' | relative_url }}">
   <h2>VoxCoach AI</h2>
   <p>An AI interview coach</p>
+  <p>Explore the app and source code</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/RowTracker">
+<a class="card" href="https://github.com/jschmierer/RowTracker" target="_blank" rel="noopener noreferrer">
   <h2>RowTracker</h2>
   <p>An app to track workouts</p>
   <p>Still in progress!</p>
+  <span class="card-cta">View on GitHub ↗</span>
 </a>
 
 </div>
@@ -23,32 +25,34 @@ title: Jakob Schmierer's Portfolio
 
 <div class="grid">
 
-<div class="grid">
-
-<a class="card" href="https://github.com/jschmierer/minesweeper">
+<a class="card" href="{{ '/projects/minesweeper/' | relative_url }}">
   <h2>Minesweeper</h2>
+  <p>Python Turtle game</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/space-invaders-game">
+<a class="card" href="{{ '/projects/space-invaders-game/' | relative_url }}">
   <h2>Space Invaders</h2>
+  <p>Python Turtle game</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/tic-tac-toe">
+<a class="card" href="{{ '/projects/tic-tac-toe/' | relative_url }}">
   <h2>Tic-Tac-Toe</h2>
+  <p>Console game with AI</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/conways-game-of-life">
+<a class="card" href="{{ '/projects/conways-game-of-life/' | relative_url }}">
   <h2>Game of Life</h2>
+  <p>Terminal simulation</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/wordle">
+<a class="card" href="{{ '/projects/wordle/' | relative_url }}">
   <h2>Wordle</h2>
+  <p>Terminal word game</p>
 </a>
 
-<a class="card" href="https://github.com/jschmierer/blackjack">
+<a class="card" href="{{ '/projects/blackjack/' | relative_url }}">
   <h2>Blackjack</h2>
+  <p>Terminal card game</p>
 </a>
-
-</div>
 
 </div>
