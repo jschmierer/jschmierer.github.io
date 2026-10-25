@@ -306,6 +306,37 @@
       if (turtleSettings) controls.appendChild(turtleSettings.element);
     }
 
+    // Size the Turtle viewing window to the game rather than leaving a large
+    // white preview panel around a smaller canvas. Measure with the stage
+    // expanded first, so changing Minesweeper difficulty or pressing Run again
+    // does not accidentally reuse the previous (smaller) game width.
+    function expandTurtleStageForMeasurement() {
+      turtleStage.style.flex = "1 1 auto";
+      turtleStage.style.width = "100%";
+      turtleStage.style.height = "";
+      turtleStage.style.minHeight = "220px";
+      turtleStage.style.maxWidth = "";
+      turtleStage.style.maxHeight = "";
+      turtleStage.style.margin = "0";
+      turtleStage.style.alignSelf = "stretch";
+      turtleStage.style.overflow = "hidden";
+      turtleStage.style.background = "#080d11";
+    }
+
+    function fitTurtleStageToGame(width, height) {
+      // These are the exact dimensions passed to Skulpt below. Never stretch
+      // its canvas with CSS: doing so would skew Minesweeper click positions.
+      turtleStage.style.flex = "0 0 auto";
+      turtleStage.style.width = `${width}px`;
+      turtleStage.style.height = `${height}px`;
+      turtleStage.style.minHeight = "0";
+      turtleStage.style.maxWidth = "100%";
+      turtleStage.style.maxHeight = "100%";
+      turtleStage.style.margin = "auto";
+      turtleStage.style.alignSelf = "center";
+      turtleStage.style.background = project === "minesweeper" ? "#f7f7f7" : "#000";
+    }
+
     // Keep the entire Turtle canvas inside the preview on regular screens.
     // Minesweeper uses the repository's own tile-based sizing; Space Invaders
     // scales its existing window proportions, without clipping the game.
@@ -319,7 +350,9 @@
         const mode = turtleSettings ? turtleSettings.difficulty.value : "hard";
         const [rows, columns] = modes[mode] || modes.hard;
         // Boards below 600 pixels use the original source's five-row HUD.
-        const tile = Math.max(8, Math.min(40,
+        // Let small boards grow past the original 40px tile cap so their
+        // canvas uses the available height rather than looking tiny.
+        const tile = Math.max(8, Math.min(
           Math.floor(availableWidth / columns),
           Math.floor(availableHeight / (rows + 5))));
         const lives = turtleSettings ? Number(turtleSettings.lives.value) : 2;
@@ -381,8 +414,10 @@
         window.Sk.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
         restoreTurtleControls();
+        expandTurtleStageForMeasurement();
         setStatus(`Running ${shortName(entry.path)}…`);
         const browser = browserTurtleSource(source);
+        fitTurtleStageToGame(browser.width, browser.height);
         const builtinFiles = window.Sk.builtinFiles?.files;
         if (!builtinFiles) throw new Error("Skulpt's standard library did not load. Reload the page and check the CDN connection.");
         // Install the browser-compatible module in the map Skulpt actually
@@ -450,6 +485,7 @@
       resetButton.hidden = false;
       clearButton.hidden = true;
       turtleStage.hidden = false;
+      expandTurtleStageForMeasurement();
       turtleStage.tabIndex = 0;
       turtleStage.addEventListener("contextmenu", (event) => event.preventDefault());
       // Hiding the terminal lets the Turtle canvas take the full available
@@ -498,6 +534,7 @@
         window.Sk?.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
         restoreTurtleControls();
+        expandTurtleStageForMeasurement();
         terminal.textContent = "Preview cleared. Click Run Python to start again.";
         terminal.hidden = true;
         setStatus("Ready");
