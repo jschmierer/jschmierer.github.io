@@ -9,7 +9,7 @@ title: Jakob Schmierer's Portfolio
 <a class="card" href="{{ '/projects/voxcoach-ai/' | relative_url }}">
   <h2>VoxCoach AI</h2>
   <p>An AI interview coach</p>
-  <p>Explore the app and source code</p>
+  <p>Explore the app and source code!</p>
 </a>
 
 <a class="card" href="https://github.com/jschmierer/RowTracker" target="_blank" rel="noopener noreferrer">
@@ -27,32 +27,26 @@ title: Jakob Schmierer's Portfolio
 
 <a class="card" href="{{ '/projects/minesweeper/' | relative_url }}">
   <h2>Minesweeper</h2>
-  <p>Python Turtle game</p>
 </a>
 
 <a class="card" href="{{ '/projects/space-invaders-game/' | relative_url }}">
   <h2>Space Invaders</h2>
-  <p>Python Turtle game</p>
 </a>
 
 <a class="card" href="{{ '/projects/tic-tac-toe/' | relative_url }}">
   <h2>Tic-Tac-Toe</h2>
-  <p>Console game with AI</p>
 </a>
 
 <a class="card" href="{{ '/projects/conways-game-of-life/' | relative_url }}">
   <h2>Game of Life</h2>
-  <p>Terminal simulation</p>
 </a>
 
 <a class="card" href="{{ '/projects/wordle/' | relative_url }}">
   <h2>Wordle</h2>
-  <p>Terminal word game</p>
 </a>
 
 <a class="card" href="{{ '/projects/blackjack/' | relative_url }}">
   <h2>Blackjack</h2>
-  <p>Terminal card game</p>
 </a>
 
 </div>
