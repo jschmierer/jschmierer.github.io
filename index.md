@@ -2,7 +2,7 @@
 title: Jakob Schmierer's Portfolio
 ---
 
-# Featured AI Project
+# Featured Projects
 
 <div class="grid">
 
@@ -11,6 +11,10 @@ title: Jakob Schmierer's Portfolio
   <p>An AI interview coach</p>
 </a>
 
+<a class="card" href="https://github.com/jschmierer/RowTracker">
+  <h2>RowTracker</h2>
+  <p>An app to track workouts</p>
+  <p>Still in progress!</p>
 </div>
 
 # Python Projects
