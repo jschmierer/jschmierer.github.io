@@ -194,23 +194,27 @@
         || files.find((file) => extension(file.path) === ".py");
     }
 
-    // Skulpt 1.2.0 provides Screen.setup(), but not the turtle.setup() alias.
-    // Its bundled turtle.js also omits argument metadata for register_shape(),
-    // and routes every mouse button to the same click handler. Patch only the
-    // browser-loaded Turtle module, leaving the displayed GitHub source intact.
+    // Adapt the browser copy of Skulpt 1.2.0's Turtle module without altering
+    // the original Python sources. Never throw during import for an optional
+    // patch: Skulpt can otherwise report a misleading "No module named turtle".
     function compatibleTurtleModule(path, source) {
       if (!/(^|\/)turtle\.js$/.test(path)) return source;
-      const shapeSignature = "proto.$register_shape.minArgs = 1;";
-      const mouseManager = 'var managers     = this._managers[type],';
-      const clickHandler = 'this.getManager("mousedown").addHandler(method, add);';
-      if (!source.includes(shapeSignature) || !source.includes(mouseManager)
-          || !source.includes(clickHandler)) {
-        throw new Error("Unsupported Skulpt Turtle module version: compatibility patch needs updating.");
-      }
-      return source
-        .replace(shapeSignature, `${shapeSignature}\n        proto.$register_shape.co_varnames = ["name", "points"];`)
-        .replace(mouseManager, 'var managers     = this._managers[type === "mousedown" ? "mousedown" + (e.button === 2 ? 3 : 1) : type],')
-        .replaceAll(clickHandler, 'this.getManager("mousedown" + (btn || 1)).addHandler(method, add);');
+      // register_shape(name, points): this 1.2.0 method omits the argument
+      // metadata needed to pass a polygon from Python into JavaScript.
+      source = source.replace(
+        /(proto\.\$register_shape\.minArgs\s*=\s*1\s*;)/,
+        '$1\n        proto.$register_shape.co_varnames = ["name", "points"];'
+      );
+      // Dispatch left/right mouse buttons to their own registered managers.
+      source = source.replace(
+        /(var\s+managers\s*=\s*)this\._managers\[type\]/,
+        '$1this._managers[type === "mousedown" ? "mousedown" + (e.button === 2 ? 3 : 1) : type]'
+      );
+      source = source.replace(
+        /this\.getManager\("mousedown"\)\.addHandler\(method, add\);/g,
+        'this.getManager("mousedown" + (btn || 1)).addHandler(method, add);'
+      );
+      return source;
     }
 
     // The turtle previews run the selected repo's Python file through Skulpt.
@@ -240,8 +244,17 @@
       controls.replaceChildren();
       runButton.disabled = true;
       setStatus(`Running ${shortName(entry.path)}…`);
+      const builtinFiles = window.Sk.builtinFiles?.files;
+      if (!builtinFiles) throw new Error("Skulpt's standard library did not load. Reload the page and check the CDN connection.");
+      // Some Skulpt distributions leave turtle.js out of the packaged stdlib.
+      // Use the corresponding version's source as a fallback, only if absent.
+      if (builtinFiles["src/lib/turtle.js"] === undefined) {
+        const moduleResponse = await fetch("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/src/lib/turtle.js");
+        if (!moduleResponse.ok) throw new Error(`Turtle module download failed (${moduleResponse.status}).`);
+        builtinFiles["src/lib/turtle.js"] = await moduleResponse.text();
+      }
       const builtinRead = (path) => {
-        const builtin = window.Sk.builtinFiles && window.Sk.builtinFiles.files[path];
+        const builtin = builtinFiles[path];
         if (builtin === undefined) throw new Error(`Python runtime file not found: '${path}'`);
         return compatibleTurtleModule(path, builtin);
       };
@@ -525,20 +538,20 @@
 
       function feedback(guess) {
         const remaining = state.solution.split("");
-        const result = Array(5).fill(".");
-        for (let i = 0; i < 5; i += 1) if (guess[i] === state.solution[i]) { result[i] = "G"; remaining[i] = ""; }
+        const result = Array(5).fill("⬛");
+        for (let i = 0; i < 5; i += 1) if (guess[i] === state.solution[i]) { result[i] = "🟩"; remaining[i] = ""; }
         for (let i = 0; i < 5; i += 1) {
-          if (result[i] === "G") continue;
+          if (result[i] === "🟩") continue;
           const found = remaining.indexOf(guess[i]);
-          if (found >= 0) { result[i] = "Y"; remaining[found] = ""; }
+          if (found >= 0) { result[i] = "🟨"; remaining[found] = ""; }
         }
-        return result.join(" ");
+        return result.join("");
       }
       function render() {
         const lines = [
           "WORDLE // TERMINAL EDITION",
           "────────────────────────────────────",
-          "Legend: G = correct spot · Y = in word · . = absent",
+          "Legend: 🟩 correct spot · 🟨 wrong spot · ⬛ not in word",
           `Attempts: ${state.guesses.length}/6`,
           ""
         ];
@@ -602,7 +615,7 @@
       previewHeading.textContent = "Tic-Tac-Toe";
       footnote.textContent = "Play X against the computer (O). Choose an empty square; start a New Game to play again.";
       terminal.hidden = true;
-      const state = { board: Array(9).fill(""), over: false };
+      const state = { board: Array(9).fill(""), over: false, computerStarted: false };
       const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
       const game = document.createElement("div");
       game.className = "ttt-preview";
@@ -663,7 +676,9 @@
         message.textContent = outcome === "X" ? "You win! X takes the game."
           : outcome === "O" ? "Computer wins! O takes the game."
           : outcome === "tie" ? "Draw! No squares left."
-          : "Your turn — X";
+          : state.computerStarted && state.board.filter(Boolean).length === 1
+            ? "Computer went first — your turn (X)"
+            : "Your turn — X";
         cells.forEach((cell, index) => {
           const mark = state.board[index];
           cell.textContent = mark;
@@ -681,9 +696,11 @@
       function restart() {
         state.board = Array(9).fill("");
         state.over = false;
+        state.computerStarted = Math.random() < 0.5;
+        if (state.computerStarted) bestMove();
         render();
       }
-      render();
+      restart();
     }
 
     // Shared initial loading first, then select an appropriate browser preview.
