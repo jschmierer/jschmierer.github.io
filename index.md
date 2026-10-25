@@ -15,6 +15,8 @@ title: Jakob Schmierer's Portfolio
   <h2>RowTracker</h2>
   <p>An app to track workouts</p>
   <p>Still in progress!</p>
+</a>
+
 </div>
 
 # Python Projects
