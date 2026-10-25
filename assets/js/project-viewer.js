@@ -258,6 +258,35 @@
       return '/* portfolio-turtle-compat-v4 */\n' + source;
     }
 
+    // Skulpt's distributed standard library sometimes embeds a compressed Turtle
+    // module, so source-level hooks from src/lib/turtle.js may be missing. Use
+    // the matching, uncompressed 1.2.0 module only when those hooks don't match.
+    // Cache the patched result for subsequent Run Python clicks on this page.
+    let compatibleTurtleSourcePromise = null;
+    async function loadCompatibleTurtleModule(builtinFiles) {
+      const path = "src/lib/turtle.js";
+      if (typeof builtinFiles[path] === "string") {
+        try {
+          return compatibleTurtleModule(path, builtinFiles[path]);
+        } catch (error) {
+          if (!String(error.message || error).startsWith("Unsupported Skulpt Turtle module:")) throw error;
+          // Use the same Skulpt version's uncompressed source instead of
+          // assuming that the bundled module has identical formatting.
+        }
+      }
+      if (!compatibleTurtleSourcePromise) {
+        compatibleTurtleSourcePromise = (async () => {
+          const response = await fetch("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/src/lib/turtle.js");
+          if (!response.ok) throw new Error(`Skulpt Turtle source download failed (${response.status}).`);
+          return compatibleTurtleModule(path, await response.text());
+        })().catch((error) => {
+          compatibleTurtleSourcePromise = null; // Allow retry after a network failure.
+          throw error;
+        });
+      }
+      return compatibleTurtleSourcePromise;
+    }
+
     let turtleSettings = null;
     function restoreTurtleControls() {
       controls.replaceChildren();
@@ -332,16 +361,9 @@
         const browser = browserTurtleSource(source);
         const builtinFiles = window.Sk.builtinFiles?.files;
         if (!builtinFiles) throw new Error("Skulpt's standard library did not load. Reload the page and check the CDN connection.");
-        if (builtinFiles["src/lib/turtle.js"] === undefined) {
-          const moduleResponse = await fetch("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/src/lib/turtle.js");
-          if (!moduleResponse.ok) throw new Error(`Turtle module download failed (${moduleResponse.status}).`);
-          builtinFiles["src/lib/turtle.js"] = await moduleResponse.text();
-        }
-        // Patch the source IN the module map, not only in the read callback:
-        // some Skulpt import paths load modules directly from builtinFiles.
-        builtinFiles["src/lib/turtle.js"] = compatibleTurtleModule(
-          "src/lib/turtle.js", builtinFiles["src/lib/turtle.js"]
-        );
+        // Install the browser-compatible module in the map Skulpt actually
+        // imports from. A compressed bundled module can lack the source hooks.
+        builtinFiles["src/lib/turtle.js"] = await loadCompatibleTurtleModule(builtinFiles);
         const builtinRead = (path) => {
           const builtin = builtinFiles[path];
           if (builtin === undefined) throw new Error(`Python runtime file not found: '${path}'`);
@@ -563,6 +585,7 @@
       footnote.textContent = "Practice hand only: no wagering or real-money features.";
       const state = { deck: [], player: [], dealer: [], over: true, busy: false, revealDealer: false, message: "Choose Deal hand to start." };
       const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+      const DEALER_CARD_DELAY_MS = 1700; // About 30% of the previous 500 ms playback speed.
       function newDeck() {
         const suits = ["♠", "♥", "♦", "♣"];
         const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -619,7 +642,7 @@
         // The dealer's opening two cards appear individually, 0.5s apart.
         state.dealer.push(state.deck.pop());
         render();
-        await pause(500);
+        await pause(DEALER_CARD_DELAY_MS);
         state.dealer.push(state.deck.pop());
         state.busy = false;
         state.message = "Your move: hit or stand.";
@@ -646,11 +669,11 @@
         state.busy = true;
         state.message = "Dealer reveals their hand…";
         render();
-        await pause(500);
+        await pause(DEALER_CARD_DELAY_MS);
         state.revealDealer = true;
         render();
         while (score(state.dealer) < 17) {
-          await pause(500);
+          await pause(DEALER_CARD_DELAY_MS);
           state.dealer.push(state.deck.pop());
           state.message = "Dealer draws a card…";
           render();
