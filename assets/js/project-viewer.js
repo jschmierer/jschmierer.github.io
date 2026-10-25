@@ -255,6 +255,19 @@
         /this\.getManager\("mousedown"\)\.addHandler\(method, add\);/g,
         'this.getManager("mousedown" + (btn || 1)).addHandler(method, add);'
       );
+      // Skulpt flips text under an inverted world Y axis. Minesweeper uses
+      // top-left-origin coordinates, so leave glyphs upright in that case.
+      requireReplacement(
+        /context\.scale\(1,\s*-1\);\s*context\.fillStyle\s*=\s*this\.fill;\s*context\.fillText\(message,\s*this\.x,\s*-this\.y\);/,
+        `context.fillStyle = this.fill;
+        if (getScreen().yScale > 0) {
+            context.fillText(message, this.x, this.y);
+        } else {
+            context.scale(1, -1);
+            context.fillText(message, this.x, -this.y);
+        }`,
+        "inverted-world text"
+      );
       return '/* portfolio-turtle-compat-v4 */\n' + source;
     }
 
@@ -328,31 +341,42 @@
       const rewritten = source
         .replace(/^windowx\s*=\s*800\s*$/m, `windowx = ${width}`)
         .replace(/^windowy\s*=\s*700\s*$/m, `windowy = ${height}`)
-        .replace(/^alien_speed\s*=\s*5\s*$/m, `alien_speed = ${Math.max(2, Number((5 * scale).toFixed(2)))}`);
+        .replace(/^alien_speed\s*=\s*5\s*$/m, `alien_speed = ${Math.max(2, Number((5 * scale).toFixed(2)))}`)
+        // The Skulpt shape adapter stretches the square along canvas X/Y,
+        // so swap only the laser's axes to draw a tall, narrow beam.
+        .replace(/laser\.shapesize\(stretch_wid=0\.2,\s*stretch_len=0\.8\)/,
+          "laser.shapesize(stretch_wid=0.8, stretch_len=0.2)");
       if (!rewritten.includes(`windowx = ${width}`) || !rewritten.includes(`windowy = ${height}`)) {
         throw new Error("Space Invaders' window size constants were not found.");
       }
       return { source: rewritten, width, height };
     }
 
+    function turtleError(message) {
+      // Errors are visible in the footnote without reopening the console.
+      terminal.textContent += `\n[Preview error] ${message}\n`;
+      terminal.hidden = true;
+      footnote.textContent = `Preview error: ${message}`;
+      setStatus("Preview stopped");
+    }
+
     async function runTurtleProject() {
       const entry = entryFile();
       if (!entry) {
-        appendTerminal("No Python file was found in this repository.\n");
+        turtleError("No Python file was found in this repository.");
         return;
       }
       if (!window.Sk || !window.Sk.misceval) {
-        appendTerminal("The in-browser Python runtime didn't load. Check the network connection and reload.\n");
-        setStatus("Python runtime unavailable");
+        turtleError("The in-browser Python runtime didn't load. Check the connection and reload.");
         return;
       }
       runButton.disabled = true;
       try {
         const source = await fetchText(entry.path, branchName);
-        // Keep a small, fixed-height console strip so later Python output
-        // cannot shrink the canvas after its dimensions are calculated.
-        terminal.textContent = " ";
-        terminal.hidden = false;
+        // Turtle games use the full preview height; keep Python output
+        // available for troubleshooting but never display the console.
+        terminal.textContent = "";
+        terminal.hidden = true;
         turtleStage.hidden = false;
         window.Sk.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
@@ -372,7 +396,7 @@
         window.Sk.execLimit = 40000;
         window.Sk.inputfunTakesPrompt = true;
         window.Sk.configure({
-          output: (text) => appendTerminal(text),
+          output: (text) => { terminal.textContent += String(text); },
           read: builtinRead,
           __future__: window.Sk.python3,
           inputfun: (prompt) => new Promise((resolve) => {
@@ -409,10 +433,12 @@
         window.Sk.TurtleGraphics.animate = false;
         await window.Sk.misceval.asyncToPromise(() => window.Sk.importMainWithBody("<stdin>", false, browser.source, true));
         turtleStage.focus();
+        if (footnote.dataset.turtleInstructions) footnote.textContent = footnote.dataset.turtleInstructions;
         setStatus("Preview running");
       } catch (error) {
-        appendTerminal(`\n[Preview error] ${error && error.toString ? error.toString() : String(error)}\n\nThis browser runtime supports basic Python and Turtle, not every desktop Python feature. The complete source remains available in the code panel.\n`);
-        setStatus("Preview stopped");
+        const reason = error && error.toString ? error.toString() : String(error);
+        turtleError(reason);
+        console.error("Turtle preview error:", error);
       } finally {
         runButton.disabled = false;
       }
@@ -422,18 +448,14 @@
       previewHeading.textContent = "Turtle window";
       runButton.hidden = false;
       resetButton.hidden = false;
-      clearButton.hidden = false;
+      clearButton.hidden = true;
       turtleStage.hidden = false;
       turtleStage.tabIndex = 0;
       turtleStage.addEventListener("contextmenu", (event) => event.preventDefault());
-      // Keep the output available for errors without it claiming half the
-      // available height from the playable Turtle canvas.
-      terminal.style.flex = "0 0 110px";
-      terminal.style.height = "110px";
-      terminal.style.maxHeight = "110px";
-      terminal.style.minHeight = "0";
-      terminal.hidden = false;
-      replaceTerminal("Turtle preview ready. Click Run Python to launch the project in this browser window.\n\nTip: this is a browser-based Python interpreter, so features that depend on desktop-only APIs may not work exactly like they do on your computer.");
+      // Hiding the terminal lets the Turtle canvas take the full available
+      // height; status and errors remain readable above/below the canvas.
+      terminal.hidden = true;
+      terminal.textContent = "Turtle preview ready. Click Run Python to launch.\n";
       if (project === "minesweeper") {
         const toolbar = document.createElement("div");
         toolbar.className = "conway-toolbar"; // Reuse existing dropdown styling.
@@ -470,15 +492,16 @@
       footnote.textContent = project === "minesweeper"
         ? "Choose difficulty and lives below, then Run Python. Left-click to reveal; right-click to flag. GitHub source is unchanged."
         : "Click the Turtle window for keyboard focus. Move with ←/→ or A/D; shoot with Space. GitHub source is unchanged.";
+      footnote.dataset.turtleInstructions = footnote.textContent;
       runButton.addEventListener("click", () => { runTurtleProject(); });
       resetButton.addEventListener("click", () => {
         window.Sk?.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
         restoreTurtleControls();
-        replaceTerminal("Preview cleared. Click Run Python to start again.");
+        terminal.textContent = "Preview cleared. Click Run Python to start again.";
+        terminal.hidden = true;
         setStatus("Ready");
       });
-      clearButton.addEventListener("click", () => replaceTerminal(""));
     }
 
     // Conway's Game of Life: a browser-side version of the terminal grid. The real .in shape
@@ -790,9 +813,9 @@
 
     function setupTicTacToePreview() {
       previewHeading.textContent = "Tic-Tac-Toe";
-      footnote.textContent = "Play X against the computer (O). Choose an empty square; start a New Game to play again.";
+      footnote.textContent = "Choose Vs Computer or Local 1v1 below. In 1v1, two players take turns on the same device.";
       terminal.hidden = true;
-      const state = { board: Array(9).fill(""), over: false, computerStarted: false };
+      const state = { board: Array(9).fill(""), over: false, computerStarted: false, turn: "X" };
       const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
       const game = document.createElement("div");
       game.className = "ttt-preview";
@@ -814,7 +837,29 @@
       });
       game.append(message, boardElement);
       controls.before(game);
-      controls.replaceChildren(makeButton("New Game", restart, { primary: true }));
+      // Both Python implementations live in this repository. The playable
+      // browser grid mirrors their rules, and the Code pane follows the mode.
+      const toolbar = document.createElement("div");
+      toolbar.className = "conway-toolbar";
+      const modeLabel = document.createElement("label");
+      modeLabel.textContent = "Mode";
+      const modeSelect = document.createElement("select");
+      modeSelect.setAttribute("aria-label", "Tic-Tac-Toe mode");
+      [["ai", "Vs Computer"], ["local", "Local 1v1"]].forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        modeSelect.appendChild(option);
+      });
+      modeLabel.appendChild(modeSelect);
+      toolbar.append(modeLabel, makeButton("New Game", restart, { primary: true }));
+      controls.replaceChildren(toolbar);
+      modeSelect.addEventListener("change", () => {
+        restart();
+        const wanted = modeSelect.value === "local" ? "tic-tac-toe-1v1.py" : "tic-tac-toe-ai.py";
+        const file = files.find((entry) => shortName(entry.path).toLowerCase() === wanted);
+        if (file) showSource(file.path);
+      });
 
       function winner(board) {
         for (const [a,b,c] of lines) if (board[a] && board[a] === board[b] && board[b] === board[c]) return board[a];
@@ -850,12 +895,19 @@
       function render() {
         const outcome = winner(state.board);
         state.over = Boolean(outcome);
-        message.textContent = outcome === "X" ? "You win! X takes the game."
-          : outcome === "O" ? "Computer wins! O takes the game."
-          : outcome === "tie" ? "Draw! No squares left."
-          : state.computerStarted && state.board.filter(Boolean).length === 1
-            ? "Computer went first — your turn (X)"
-            : "Your turn — X";
+        if (modeSelect.value === "local") {
+          message.textContent = outcome === "X" ? "Player 1 (X) wins!"
+            : outcome === "O" ? "Player 2 (O) wins!"
+            : outcome === "tie" ? "Draw! No squares left."
+            : `Player ${state.turn === "X" ? "1 (X)" : "2 (O)"}'s turn`;
+        } else {
+          message.textContent = outcome === "X" ? "You win! X takes the game."
+            : outcome === "O" ? "Computer wins! O takes the game."
+            : outcome === "tie" ? "Draw! No squares left."
+            : state.computerStarted && state.board.filter(Boolean).length === 1
+              ? "Computer went first — your turn (X)"
+              : "Your turn — X";
+        }
         cells.forEach((cell, index) => {
           const mark = state.board[index];
           cell.textContent = mark;
@@ -866,18 +918,30 @@
       }
       function play(index) {
         if (state.over || state.board[index]) return;
-        state.board[index] = "X";
-        if (!winner(state.board)) bestMove();
+        if (modeSelect.value === "local") {
+          state.board[index] = state.turn;
+          if (!winner(state.board)) state.turn = state.turn === "X" ? "O" : "X";
+        } else {
+          state.board[index] = "X";
+          if (!winner(state.board)) bestMove();
+        }
         render();
       }
       function restart() {
         state.board = Array(9).fill("");
         state.over = false;
-        state.computerStarted = Math.random() < 0.5;
-        if (state.computerStarted) {
-          // Preserve the original game's randomly selected corner opener.
-          const corners = [0, 2, 6, 8];
-          state.board[corners[Math.floor(Math.random() * corners.length)]] = "O";
+        if (modeSelect.value === "local") {
+          // The original tic-tac-toe-1v1.py also randomly chooses X or O first.
+          state.computerStarted = false;
+          state.turn = Math.random() < 0.5 ? "X" : "O";
+        } else {
+          state.turn = "X";
+          state.computerStarted = Math.random() < 0.5;
+          if (state.computerStarted) {
+            // Preserve the AI source's randomly selected corner opener.
+            const corners = [0, 2, 6, 8];
+            state.board[corners[Math.floor(Math.random() * corners.length)]] = "O";
+          }
         }
         render();
       }
