@@ -194,69 +194,118 @@
         || files.find((file) => extension(file.path) === ".py");
     }
 
-    // Adapt the browser copy of Skulpt 1.2.0's Turtle module without altering
-    // the original Python sources. Never throw during import for an optional
-    // patch: Skulpt can otherwise report a misleading "No module named turtle".
+    // Patch only the in-browser copy of Skulpt 1.2.0's Turtle module.
+    // The original Python code and GitHub repositories remain untouched.
     function compatibleTurtleModule(path, source) {
-      if (!/(^|\/)turtle\.js$/.test(path)) return source;
-      // register_shape(name, points): this 1.2.0 method omits the argument
-      // metadata needed to pass a polygon from Python into JavaScript.
-      source = source.replace(
-        /(proto\.\$register_shape\.minArgs\s*=\s*1\s*;)/,
-        '$1\n        proto.$register_shape.co_varnames = ["name", "points"];'
+      if (!/(^|\/)turtle\.js$/.test(path) || source.includes("/* portfolio-turtle-compat-v4 */")) return source;
+      const requireReplacement = (pattern, replacement, feature) => {
+        if (!pattern.test(source)) throw new Error(`Unsupported Skulpt Turtle module: ${feature} hook not found.`);
+        source = source.replace(pattern, replacement);
+      };
+      // Both method aliases must expose two positional parameters to Skulpt's
+      // Python wrapper. Without co_varnames its wrapper accepts only 'self'.
+      requireReplacement(
+        /proto\.\$register_shape\.minArgs\s*=\s*1\s*;/,
+        '$&\n        proto.$register_shape.co_varnames = proto.$addshape.co_varnames = ["name", "points"];',
+        "custom polygon registration"
       );
-      // Skulpt 1.2.0 constructs Python method signatures separately from
-      // the JavaScript implementations. Force the correct Screen signature
-      // for custom polygons (self, name, points) at that construction point;
-      // adding metadata on the prototype alone isn't reliable in every build.
-      source = source.replace(
-        /(module\[publicMethodName\]\s*=\s*new Sk\.builtin\.func\(wrapperFn\);)/,
-        `if (publicMethodName === "register_shape" || publicMethodName === "addshape") {
-            wrapperFn.co_varnames = scopeGenerator ? ["name", "points"] : ["self", "name", "points"];
+      // Skulpt's wrapper function has zero JS formal parameters, so explicitly
+      // set the Python-visible argument count for the affected methods.
+      requireReplacement(
+        /module\[publicMethodName\]\s*=\s*new Sk\.builtin\.func\(wrapperFn\);/,
+        `if (publicMethodName === "register_shape" || publicMethodName === "addshape" ||
+            publicMethodName === "shapesize" || publicMethodName === "turtlesize") {
             wrapperFn.co_argcount = wrapperFn.co_varnames.length;
-            wrapperFn.$defaults = [Sk.builtin.none.none$];
         }
-        $1`
+        $&`,
+        "Python wrapper signature"
       );
-      // Older Skulpt Turtle has no shapesize/turtlesize. Add the missing
-      // method to the Turtle prototype so it works both positionally and with
-      // keywords (stretch_wid=..., stretch_len=...), including tiny stars and
-      // long thin lasers. The scale is applied when the shape is drawn.
-      source = source.replace(
-        /(proto\.\$shape\.co_varnames\s*=\s*\["name"\]\s*;)/,
-        `$1
+      // Register shapesize BEFORE TurtleWrapper copies prototype methods into
+      // the Python class. Its state fields are read by drawTurtle and stamps.
+      requireReplacement(
+        /proto\.\$shape\.co_varnames\s*=\s*\["name"\]\s*;/,
+        `$&
         proto.$shapesize = proto.$turtlesize = function(stretch_wid, stretch_len, outline) {
             if (stretch_wid === undefined) {
                 return [this._stretchWid || 1, this._stretchLen || 1, this._shapeOutline || 1];
             }
             this._stretchWid = stretch_wid;
-            this._stretchLen = (stretch_len === undefined) ? stretch_wid : stretch_len;
+            this._stretchLen = stretch_len === undefined ? stretch_wid : stretch_len;
             if (outline !== undefined) this._shapeOutline = outline;
             return this.addUpdate(undefined, this._shown, {
-                stretchWid: this._stretchWid,
-                stretchLen: this._stretchLen
+                stretchWid: this._stretchWid, stretchLen: this._stretchLen
             });
         };
-        proto.$shapesize.minArgs = 0;
-        proto.$shapesize.co_varnames = ["stretch_wid", "stretch_len", "outline"];`
+        proto.$shapesize.minArgs = proto.$turtlesize.minArgs = 0;
+        proto.$shapesize.co_varnames = proto.$turtlesize.co_varnames = ["stretch_wid", "stretch_len", "outline"];`,
+        "shape stretching"
       );
-      source = source.replace(
-        /(function drawTurtle\(state, context\) \{[\s\S]*?context\.scale\(xScale,yScale\);)/,
-        '$1\n        context.scale(state.stretchLen || 1, state.stretchWid || 1);'
+      requireReplacement(
+        /context\.scale\(xScale\s*,\s*yScale\);(?=[\s\S]*?if \(shape\.nodeName\))/,
+        '$&\n        context.scale(state.stretchLen || 1, state.stretchWid || 1);',
+        "Turtle shape rendering"
       );
-      // Dispatch left/right mouse buttons to their own registered managers.
-      source = source.replace(
+      // Dispatch screen click handlers by mouse button (1=left, 3=right).
+      requireReplacement(
         /(var\s+managers\s*=\s*)this\._managers\[type\]/,
-        '$1this._managers[type === "mousedown" ? "mousedown" + (e.button === 2 ? 3 : 1) : type]'
+        '$1this._managers[type === "mousedown" ? "mousedown" + (e.button === 2 ? 3 : 1) : type]',
+        "mouse button dispatch"
       );
       source = source.replace(
         /this\.getManager\("mousedown"\)\.addHandler\(method, add\);/g,
         'this.getManager("mousedown" + (btn || 1)).addHandler(method, add);'
       );
-      return source;
+      return '/* portfolio-turtle-compat-v4 */\n' + source;
     }
 
-    // The turtle previews run the selected repo's Python file through Skulpt.
+    let turtleSettings = null;
+    function restoreTurtleControls() {
+      controls.replaceChildren();
+      if (turtleSettings) controls.appendChild(turtleSettings.element);
+    }
+
+    // Keep the entire Turtle canvas inside the preview on regular screens.
+    // Minesweeper uses the repository's own tile-based sizing; Space Invaders
+    // scales its existing window proportions, without clipping the game.
+    function browserTurtleSource(source) {
+      const availableWidth = Math.max(180, (turtleStage.clientWidth || 560) - 12);
+      const availableHeight = Math.max(180, (turtleStage.clientHeight || 560) - 12);
+      if (project === "minesweeper") {
+        const modes = {
+          "super easy": [5, 5], easy: [10, 10], med: [15, 15], hard: [20, 20]
+        };
+        const mode = turtleSettings ? turtleSettings.difficulty.value : "hard";
+        const [rows, columns] = modes[mode] || modes.hard;
+        // Boards below 600 pixels use the original source's five-row HUD.
+        const tile = Math.max(8, Math.min(40,
+          Math.floor(availableWidth / columns),
+          Math.floor(availableHeight / (rows + 5))));
+        const lives = turtleSettings ? Number(turtleSettings.lives.value) : 2;
+        const rewritten = source
+          .replace(/^MODE\s*=\s*["'][^"']+["']/m, `MODE = ${JSON.stringify(mode)}`)
+          .replace(/^LIVES\s*=\s*\d+/m, `LIVES = ${lives}`)
+          .replace(/^TILESIZE\s*=\s*\d+/m, `TILESIZE = ${tile}`)
+          .replace(/\bturtle\.setup\s*\(/, "turtle.Screen().setup(")
+          .replaceAll("time.monotonic()", "time.time()");
+        if (rewritten === source || !rewritten.includes(`TILESIZE = ${tile}`)) {
+          throw new Error("Minesweeper's configurable source constants were not found.");
+        }
+        const hudRows = columns * tile < 600 ? 5 : 2;
+        return { source: rewritten, width: columns * tile, height: (rows + hudRows) * tile };
+      }
+      const scale = Math.min(1, availableWidth / 800, availableHeight / 700);
+      const width = Math.max(250, Math.floor(800 * scale));
+      const height = Math.max(220, Math.floor(700 * scale));
+      const rewritten = source
+        .replace(/^windowx\s*=\s*800\s*$/m, `windowx = ${width}`)
+        .replace(/^windowy\s*=\s*700\s*$/m, `windowy = ${height}`)
+        .replace(/^alien_speed\s*=\s*5\s*$/m, `alien_speed = ${Math.max(2, Number((5 * scale).toFixed(2)))}`);
+      if (!rewritten.includes(`windowx = ${width}`) || !rewritten.includes(`windowy = ${height}`)) {
+        throw new Error("Space Invaders' window size constants were not found.");
+      }
+      return { source: rewritten, width, height };
+    }
+
     async function runTurtleProject() {
       const entry = entryFile();
       if (!entry) {
@@ -268,75 +317,76 @@
         setStatus("Python runtime unavailable");
         return;
       }
-      const source = await fetchText(entry.path, branchName);
-      // Skulpt's time module has time.time(), not time.monotonic().
-      // These adaptations affect only the preview copy, not GitHub's Python file.
-      const browserSource = project === "minesweeper"
-        ? source.replace(/\bturtle\.setup\s*\(/, "turtle.Screen().setup(")
-          .replaceAll("time.monotonic()", "time.time()")
-        : source;
-      terminal.textContent = "";
-      terminal.hidden = false;
-      turtleStage.hidden = false;
-      window.Sk.TurtleGraphics?.reset?.();
-      turtleStage.replaceChildren();
-      controls.replaceChildren();
       runButton.disabled = true;
-      setStatus(`Running ${shortName(entry.path)}…`);
-      const builtinFiles = window.Sk.builtinFiles?.files;
-      if (!builtinFiles) throw new Error("Skulpt's standard library did not load. Reload the page and check the CDN connection.");
-      // Some Skulpt distributions leave turtle.js out of the packaged stdlib.
-      // Use the corresponding version's source as a fallback, only if absent.
-      if (builtinFiles["src/lib/turtle.js"] === undefined) {
-        const moduleResponse = await fetch("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/src/lib/turtle.js");
-        if (!moduleResponse.ok) throw new Error(`Turtle module download failed (${moduleResponse.status}).`);
-        builtinFiles["src/lib/turtle.js"] = await moduleResponse.text();
-      }
-      const builtinRead = (path) => {
-        const builtin = builtinFiles[path];
-        if (builtin === undefined) throw new Error(`Python runtime file not found: '${path}'`);
-        return compatibleTurtleModule(path, builtin);
-      };
-      window.Sk.execLimit = 40000;
-      window.Sk.inputfunTakesPrompt = true;
-      window.Sk.configure({
-        output: (text) => appendTerminal(text),
-        read: builtinRead,
-        __future__: window.Sk.python3,
-        inputfun: (prompt) => new Promise((resolve) => {
-          controls.replaceChildren();
-          const form = document.createElement("form");
-          form.className = "console-input-wrap";
-          const promptLabel = document.createElement("span");
-          promptLabel.textContent = prompt || ">";
-          const input = document.createElement("input");
-          input.type = "text";
-          input.autocomplete = "off";
-          input.setAttribute("aria-label", prompt || "Python input");
-          const send = document.createElement("button");
-          send.type = "submit";
-          send.className = "console-control primary";
-          send.textContent = "Enter";
-          form.append(promptLabel, input, send);
-          controls.appendChild(form);
-          input.focus();
-          form.addEventListener("submit", (event) => {
-            event.preventDefault();
-            const value = input.value;
-            appendTerminal(`${value}\n`);
-            controls.replaceChildren();
-            resolve(value);
-          }, { once: true });
-        })
-      });
-      window.Sk.TurtleGraphics = window.Sk.TurtleGraphics || {};
-      window.Sk.TurtleGraphics.target = turtleStage.id;
-      window.Sk.TurtleGraphics.width = 800;
-      window.Sk.TurtleGraphics.height = project === "minesweeper" ? 880 : 700;
-      window.Sk.TurtleGraphics.animate = false; // Fast initial rendering of hundreds of tiles/sprites.
       try {
-        await window.Sk.misceval.asyncToPromise(() => window.Sk.importMainWithBody("<stdin>", false, browserSource, true));
-        turtleStage.focus(); // Arrow keys, A/D and Space require focus in Skulpt.
+        const source = await fetchText(entry.path, branchName);
+        // Keep a small, fixed-height console strip so later Python output
+        // cannot shrink the canvas after its dimensions are calculated.
+        terminal.textContent = " ";
+        terminal.hidden = false;
+        turtleStage.hidden = false;
+        window.Sk.TurtleGraphics?.reset?.();
+        turtleStage.replaceChildren();
+        restoreTurtleControls();
+        setStatus(`Running ${shortName(entry.path)}…`);
+        const browser = browserTurtleSource(source);
+        const builtinFiles = window.Sk.builtinFiles?.files;
+        if (!builtinFiles) throw new Error("Skulpt's standard library did not load. Reload the page and check the CDN connection.");
+        if (builtinFiles["src/lib/turtle.js"] === undefined) {
+          const moduleResponse = await fetch("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/src/lib/turtle.js");
+          if (!moduleResponse.ok) throw new Error(`Turtle module download failed (${moduleResponse.status}).`);
+          builtinFiles["src/lib/turtle.js"] = await moduleResponse.text();
+        }
+        // Patch the source IN the module map, not only in the read callback:
+        // some Skulpt import paths load modules directly from builtinFiles.
+        builtinFiles["src/lib/turtle.js"] = compatibleTurtleModule(
+          "src/lib/turtle.js", builtinFiles["src/lib/turtle.js"]
+        );
+        const builtinRead = (path) => {
+          const builtin = builtinFiles[path];
+          if (builtin === undefined) throw new Error(`Python runtime file not found: '${path}'`);
+          return builtin;
+        };
+        window.Sk.execLimit = 40000;
+        window.Sk.inputfunTakesPrompt = true;
+        window.Sk.configure({
+          output: (text) => appendTerminal(text),
+          read: builtinRead,
+          __future__: window.Sk.python3,
+          inputfun: (prompt) => new Promise((resolve) => {
+            // A terminal input prompt can coexist with the Minesweeper settings.
+            restoreTurtleControls();
+            const form = document.createElement("form");
+            form.className = "console-input-wrap";
+            const promptLabel = document.createElement("span");
+            promptLabel.textContent = prompt || ">";
+            const input = document.createElement("input");
+            input.type = "text";
+            input.autocomplete = "off";
+            input.setAttribute("aria-label", prompt || "Python input");
+            const send = document.createElement("button");
+            send.type = "submit";
+            send.className = "console-control primary";
+            send.textContent = "Enter";
+            form.append(promptLabel, input, send);
+            controls.appendChild(form);
+            input.focus();
+            form.addEventListener("submit", (event) => {
+              event.preventDefault();
+              const value = input.value;
+              appendTerminal(`${value}\n`);
+              form.remove();
+              resolve(value);
+            }, { once: true });
+          })
+        });
+        window.Sk.TurtleGraphics = window.Sk.TurtleGraphics || {};
+        window.Sk.TurtleGraphics.target = turtleStage.id;
+        window.Sk.TurtleGraphics.width = browser.width;
+        window.Sk.TurtleGraphics.height = browser.height;
+        window.Sk.TurtleGraphics.animate = false;
+        await window.Sk.misceval.asyncToPromise(() => window.Sk.importMainWithBody("<stdin>", false, browser.source, true));
+        turtleStage.focus();
         setStatus("Preview running");
       } catch (error) {
         appendTerminal(`\n[Preview error] ${error && error.toString ? error.toString() : String(error)}\n\nThis browser runtime supports basic Python and Turtle, not every desktop Python feature. The complete source remains available in the code panel.\n`);
@@ -354,22 +404,55 @@
       turtleStage.hidden = false;
       turtleStage.tabIndex = 0;
       turtleStage.addEventListener("contextmenu", (event) => event.preventDefault());
+      // Keep the output available for errors without it claiming half the
+      // available height from the playable Turtle canvas.
+      terminal.style.flex = "0 0 110px";
+      terminal.style.height = "110px";
+      terminal.style.maxHeight = "110px";
+      terminal.style.minHeight = "0";
       terminal.hidden = false;
       replaceTerminal("Turtle preview ready. Click Run Python to launch the project in this browser window.\n\nTip: this is a browser-based Python interpreter, so features that depend on desktop-only APIs may not work exactly like they do on your computer.");
-      footnote.textContent = project === "minesweeper"
-        ? "Left-click to reveal; right-click to flag. Scroll inside the Turtle window for the full board. GitHub source is unchanged."
-        : "Click the Turtle window for keyboard focus. Move with ←/→ or A/D; shoot with Space. GitHub source is unchanged.";
-      runButton.addEventListener("click", () => {
-        runTurtleProject().catch((error) => {
-          appendTerminal(`\n[Preview error] ${error.message}\n`);
-          setStatus("Could not run");
-          runButton.disabled = false;
+      if (project === "minesweeper") {
+        const toolbar = document.createElement("div");
+        toolbar.className = "conway-toolbar"; // Reuse existing dropdown styling.
+        const difficultyLabel = document.createElement("label");
+        difficultyLabel.textContent = "Difficulty";
+        const difficulty = document.createElement("select");
+        difficulty.setAttribute("aria-label", "Minesweeper difficulty");
+        [["super easy", "Super Easy"], ["easy", "Easy"], ["med", "Medium"], ["hard", "Hard"]].forEach(([value, label]) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          difficulty.appendChild(option);
         });
-      });
+        difficulty.value = "hard";
+        difficultyLabel.appendChild(difficulty);
+        const livesLabel = document.createElement("label");
+        livesLabel.textContent = "Lives";
+        const lives = document.createElement("select");
+        lives.setAttribute("aria-label", "Minesweeper lives");
+        [1, 2, 3, 4, 5].forEach((value) => {
+          const option = document.createElement("option");
+          option.value = String(value);
+          option.textContent = String(value);
+          lives.appendChild(option);
+        });
+        lives.value = "2";
+        livesLabel.appendChild(lives);
+        // Keep the two labels and dropdowns at the bottom, alongside other
+        // previews' settings; selections apply on the next Run Python.
+        toolbar.append(difficultyLabel, livesLabel);
+        turtleSettings = { element: toolbar, difficulty, lives };
+        restoreTurtleControls();
+      }
+      footnote.textContent = project === "minesweeper"
+        ? "Choose difficulty and lives below, then Run Python. Left-click to reveal; right-click to flag. GitHub source is unchanged."
+        : "Click the Turtle window for keyboard focus. Move with ←/→ or A/D; shoot with Space. GitHub source is unchanged.";
+      runButton.addEventListener("click", () => { runTurtleProject(); });
       resetButton.addEventListener("click", () => {
         window.Sk?.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
-        controls.replaceChildren();
+        restoreTurtleControls();
         replaceTerminal("Preview cleared. Click Run Python to start again.");
         setStatus("Ready");
       });
@@ -478,7 +561,8 @@
     function setupBlackjackPreview() {
       previewHeading.textContent = "Terminal · Blackjack";
       footnote.textContent = "Practice hand only: no wagering or real-money features.";
-      const state = { deck: [], player: [], dealer: [], over: true, message: "Choose Deal hand to start." };
+      const state = { deck: [], player: [], dealer: [], over: true, busy: false, revealDealer: false, message: "Choose Deal hand to start." };
+      const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
       function newDeck() {
         const suits = ["♠", "♥", "♦", "♣"];
         const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
@@ -506,8 +590,8 @@
         return cards.map((card, index) => hideLast && index === 1 ? "[ ?? ]" : `[ ${card.rank}${card.suit} ]`).join(" ");
       }
       function render() {
-        const dealerHidden = !state.over && state.dealer.length > 1;
-        const dealerScore = dealerHidden ? "?" : score(state.dealer);
+        const dealerHidden = !state.over && !state.revealDealer && state.dealer.length > 1;
+        const dealerScore = dealerHidden ? "?" : state.dealer.length ? score(state.dealer) : "—";
         replaceTerminal([
           "BLACKJACK // PRACTICE HAND",
           "────────────────────────────────────",
@@ -518,30 +602,61 @@
         ].join("\n"));
         controls.replaceChildren();
         controls.append(
-          makeButton("Deal hand", deal, { primary: true, disabled: !state.over }),
-          makeButton("Hit", hit, { disabled: state.over }),
-          makeButton("Stand", stand, { disabled: state.over })
+          makeButton("Deal hand", deal, { primary: true, disabled: !state.over || state.busy }),
+          makeButton("Hit", hit, { disabled: state.over || state.busy }),
+          makeButton("Stand", stand, { disabled: state.over || state.busy })
         );
       }
-      function deal() {
+      async function deal() {
+        if (!state.over || state.busy) return;
+        state.busy = true;
         state.deck = newDeck();
         state.player = [state.deck.pop(), state.deck.pop()];
-        state.dealer = [state.deck.pop(), state.deck.pop()];
+        state.dealer = [];
         state.over = false;
+        state.revealDealer = false;
+        state.message = "Dealer is dealing…";
+        // The dealer's opening two cards appear individually, 0.5s apart.
+        state.dealer.push(state.deck.pop());
+        render();
+        await pause(500);
+        state.dealer.push(state.deck.pop());
+        state.busy = false;
         state.message = "Your move: hit or stand.";
-        if (score(state.player) === 21) stand(); else render();
+        render();
+        if (score(state.player) === 21) await stand();
       }
       function hit() {
-        if (state.over) return;
+        if (state.over || state.busy) return;
         state.player.push(state.deck.pop());
-        if (score(state.player) > 21) { state.over = true; state.message = "Bust. Dealer wins this hand."; }
-        else if (score(state.player) === 21) stand();
-        else { state.message = "Your move: hit or stand."; render(); }
+        if (score(state.player) > 21) {
+          state.over = true;
+          state.revealDealer = true;
+          state.message = "Bust. Dealer wins this hand.";
+          render();
+        } else if (score(state.player) === 21) {
+          stand();
+        } else {
+          state.message = "Your move: hit or stand.";
+          render();
+        }
       }
-      function stand() {
-        if (state.over) return;
-        while (score(state.dealer) < 17) state.dealer.push(state.deck.pop());
+      async function stand() {
+        if (state.over || state.busy) return;
+        state.busy = true;
+        state.message = "Dealer reveals their hand…";
+        render();
+        await pause(500);
+        state.revealDealer = true;
+        render();
+        while (score(state.dealer) < 17) {
+          await pause(500);
+          state.dealer.push(state.deck.pop());
+          state.message = "Dealer draws a card…";
+          render();
+        }
         state.over = true;
+        state.busy = false;
         const playerScore = score(state.player);
         const dealerScore = score(state.dealer);
         if (dealerScore > 21 || playerScore > dealerScore) state.message = "You win this hand.";
