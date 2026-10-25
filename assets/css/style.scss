@@ -31,7 +31,8 @@ h1 { margin-top: 50px; }
 
 .card:hover {
   transform: translateY(-6px);
-  animation: rainbowGlow 2.5s infinite linear;
+  border: 2px solid #ff425c; /* Visible even while the animation initializes. */
+  animation: rainbowBorderGlow 2.4s linear infinite;
   text-decoration: none;
 }
 .card:active { transform: translateY(-2px); }
@@ -40,12 +41,15 @@ h1 { margin-top: 50px; }
 .card-cta { margin-top: 14px; font-size: 0.9rem; color: #b5e853; }
 .featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-@keyframes rainbowGlow {
-  0% { box-shadow: 0 0 15px rgba(255, 0, 0, 0.4), 0 0 30px rgba(255, 0, 0, 0.2); }
-  25% { box-shadow: 0 0 15px rgba(0, 255, 0, 0.4), 0 0 30px rgba(0, 255, 0, 0.2); }
-  50% { box-shadow: 0 0 15px rgba(0, 0, 255, 0.4), 0 0 30px rgba(0, 0, 255, 0.2); }
-  75% { box-shadow: 0 0 15px rgba(255, 255, 0, 0.4), 0 0 30px rgba(255, 255, 0, 0.2); }
-  100% { box-shadow: 0 0 15px rgba(255, 0, 0, 0.4), 0 0 30px rgba(255, 0, 0, 0.2); }
+/* Animate the solid BORDER as well as the glow. The inset line reinforces the
+   border on themes where a one-pixel border is difficult to see. */
+@keyframes rainbowBorderGlow {
+  0%, 100% { border-color: #ff425c; box-shadow: inset 0 0 0 1px #ff425c, 0 0 16px rgba(255, 66, 92, 0.75), 0 0 34px rgba(255, 66, 92, 0.36); }
+  17% { border-color: #ffab33; box-shadow: inset 0 0 0 1px #ffab33, 0 0 16px rgba(255, 171, 51, 0.75), 0 0 34px rgba(255, 171, 51, 0.36); }
+  34% { border-color: #54e775; box-shadow: inset 0 0 0 1px #54e775, 0 0 16px rgba(84, 231, 117, 0.75), 0 0 34px rgba(84, 231, 117, 0.36); }
+  51% { border-color: #36d9ed; box-shadow: inset 0 0 0 1px #36d9ed, 0 0 16px rgba(54, 217, 237, 0.75), 0 0 34px rgba(54, 217, 237, 0.36); }
+  68% { border-color: #5989ff; box-shadow: inset 0 0 0 1px #5989ff, 0 0 16px rgba(89, 137, 255, 0.75), 0 0 34px rgba(89, 137, 255, 0.36); }
+  85% { border-color: #cf65ef; box-shadow: inset 0 0 0 1px #cf65ef, 0 0 16px rgba(207, 101, 239, 0.75), 0 0 34px rgba(207, 101, 239, 0.36); }
 }
 
 @media (max-width: 900px) {
@@ -110,7 +114,8 @@ body:has(.voxcoach-page) .container { padding-top: 18px; padding-bottom: 28px; }
 }
 .project-top-link:hover {
   background: rgba(32, 47, 58, 0.98);
-  animation: rainbowGlow 2.5s infinite linear;
+  border: 2px solid #ff425c; /* Visible even while the animation initializes. */
+  animation: rainbowBorderGlow 2.4s linear infinite;
   transform: translateY(-2px);
 }
 
@@ -303,7 +308,8 @@ body:has(.voxcoach-page) .container { padding-top: 18px; padding-bottom: 28px; }
 .voxcoach-card { display: flex; min-height: 310px; flex-direction: column; justify-content: center; padding: clamp(28px, 5vw, 62px); border: 1px solid #35414b; border-radius: 10px; background: linear-gradient(145deg, rgba(20,31,39,.98), rgba(7,12,16,.98)); color: var(--text) !important; text-decoration: none !important; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
 .voxcoach-card:hover {
   transform: translateY(-5px);
-  animation: rainbowGlow 2.5s infinite linear;
+  border: 2px solid #ff425c; /* Visible even while the animation initializes. */
+  animation: rainbowBorderGlow 2.4s linear infinite;
 }
 .voxcoach-card-kicker { color: var(--accent); font-size: .78rem; letter-spacing: .16em; }
 .voxcoach-card h2 { margin: 17px 0 10px; font-size: clamp(1.5rem, 3vw, 2.1rem); }
@@ -332,5 +338,10 @@ body:has(.voxcoach-page) .container { padding-top: 18px; padding-bottom: 28px; }
 
 @media (prefers-reduced-motion: reduce) {
   .card, .project-top-link, .voxcoach-card { transition: none; }
-  .card:hover, .project-top-link:hover, .preview-button:hover, .console-control:hover, .voxcoach-card:hover { animation: none; }
+  .card:hover, .project-top-link:hover, .voxcoach-card:hover {
+    animation: none;
+    border-color: #ff425c;
+    box-shadow: inset 0 0 0 1px #ff425c, 0 0 16px rgba(255, 66, 92, 0.75), 0 0 34px rgba(255, 66, 92, 0.36);
+  }
+  .preview-button:hover, .console-control:hover { animation: none; }
 }
