@@ -338,10 +338,7 @@ body:has(.voxcoach-page) .container { padding-top: 18px; padding-bottom: 28px; }
 
 @media (prefers-reduced-motion: reduce) {
   .card, .project-top-link, .voxcoach-card { transition: none; }
-  .card:hover, .project-top-link:hover, .voxcoach-card:hover {
-    animation: none;
-    border-color: #ff425c;
-    box-shadow: inset 0 0 0 1px #ff425c, 0 0 16px rgba(255, 66, 92, 0.75), 0 0 34px rgba(255, 66, 92, 0.36);
-  }
+  /* Keep the explicitly requested rainbow border and glow animated on hover.
+     Earlier this override froze both effects at their first (red) frame. */
   .preview-button:hover, .console-control:hover { animation: none; }
 }
