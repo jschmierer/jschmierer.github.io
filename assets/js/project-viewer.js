@@ -205,6 +205,45 @@
         /(proto\.\$register_shape\.minArgs\s*=\s*1\s*;)/,
         '$1\n        proto.$register_shape.co_varnames = ["name", "points"];'
       );
+      // Skulpt 1.2.0 constructs Python method signatures separately from
+      // the JavaScript implementations. Force the correct Screen signature
+      // for custom polygons (self, name, points) at that construction point;
+      // adding metadata on the prototype alone isn't reliable in every build.
+      source = source.replace(
+        /(module\[publicMethodName\]\s*=\s*new Sk\.builtin\.func\(wrapperFn\);)/,
+        `if (publicMethodName === "register_shape" || publicMethodName === "addshape") {
+            wrapperFn.co_varnames = scopeGenerator ? ["name", "points"] : ["self", "name", "points"];
+            wrapperFn.co_argcount = wrapperFn.co_varnames.length;
+            wrapperFn.$defaults = [Sk.builtin.none.none$];
+        }
+        $1`
+      );
+      // Older Skulpt Turtle has no shapesize/turtlesize. Add the missing
+      // method to the Turtle prototype so it works both positionally and with
+      // keywords (stretch_wid=..., stretch_len=...), including tiny stars and
+      // long thin lasers. The scale is applied when the shape is drawn.
+      source = source.replace(
+        /(proto\.\$shape\.co_varnames\s*=\s*\["name"\]\s*;)/,
+        `$1
+        proto.$shapesize = proto.$turtlesize = function(stretch_wid, stretch_len, outline) {
+            if (stretch_wid === undefined) {
+                return [this._stretchWid || 1, this._stretchLen || 1, this._shapeOutline || 1];
+            }
+            this._stretchWid = stretch_wid;
+            this._stretchLen = (stretch_len === undefined) ? stretch_wid : stretch_len;
+            if (outline !== undefined) this._shapeOutline = outline;
+            return this.addUpdate(undefined, this._shown, {
+                stretchWid: this._stretchWid,
+                stretchLen: this._stretchLen
+            });
+        };
+        proto.$shapesize.minArgs = 0;
+        proto.$shapesize.co_varnames = ["stretch_wid", "stretch_len", "outline"];`
+      );
+      source = source.replace(
+        /(function drawTurtle\(state, context\) \{[\s\S]*?context\.scale\(xScale,yScale\);)/,
+        '$1\n        context.scale(state.stretchLen || 1, state.stretchWid || 1);'
+      );
       // Dispatch left/right mouse buttons to their own registered managers.
       source = source.replace(
         /(var\s+managers\s*=\s*)this\._managers\[type\]/,
@@ -697,7 +736,11 @@
         state.board = Array(9).fill("");
         state.over = false;
         state.computerStarted = Math.random() < 0.5;
-        if (state.computerStarted) bestMove();
+        if (state.computerStarted) {
+          // Preserve the original game's randomly selected corner opener.
+          const corners = [0, 2, 6, 8];
+          state.board[corners[Math.floor(Math.random() * corners.length)]] = "O";
+        }
         render();
       }
       restart();
