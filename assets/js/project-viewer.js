@@ -347,7 +347,7 @@
         const modes = {
           "super easy": [5, 5], easy: [10, 10], med: [15, 15], hard: [20, 20]
         };
-        const mode = turtleSettings ? turtleSettings.difficulty.value : "hard";
+        const mode = turtleSettings ? turtleSettings.difficulty.value : "easy";
         const [rows, columns] = modes[mode] || modes.hard;
         // Boards below 600 pixels use the original source's five-row HUD.
         // Let small boards grow past the original 40px tile cap so their
@@ -505,7 +505,7 @@
           option.textContent = label;
           difficulty.appendChild(option);
         });
-        difficulty.value = "hard";
+        difficulty.value = "easy";
         difficultyLabel.appendChild(difficulty);
         const livesLabel = document.createElement("label");
         livesLabel.textContent = "Lives";
