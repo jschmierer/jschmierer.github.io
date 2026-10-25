@@ -194,6 +194,25 @@
         || files.find((file) => extension(file.path) === ".py");
     }
 
+    // Skulpt 1.2.0 provides Screen.setup(), but not the turtle.setup() alias.
+    // Its bundled turtle.js also omits argument metadata for register_shape(),
+    // and routes every mouse button to the same click handler. Patch only the
+    // browser-loaded Turtle module, leaving the displayed GitHub source intact.
+    function compatibleTurtleModule(path, source) {
+      if (!/(^|\/)turtle\.js$/.test(path)) return source;
+      const shapeSignature = "proto.$register_shape.minArgs = 1;";
+      const mouseManager = 'var managers     = this._managers[type],';
+      const clickHandler = 'this.getManager("mousedown").addHandler(method, add);';
+      if (!source.includes(shapeSignature) || !source.includes(mouseManager)
+          || !source.includes(clickHandler)) {
+        throw new Error("Unsupported Skulpt Turtle module version: compatibility patch needs updating.");
+      }
+      return source
+        .replace(shapeSignature, `${shapeSignature}\n        proto.$register_shape.co_varnames = ["name", "points"];`)
+        .replace(mouseManager, 'var managers     = this._managers[type === "mousedown" ? "mousedown" + (e.button === 2 ? 3 : 1) : type],')
+        .replaceAll(clickHandler, 'this.getManager("mousedown" + (btn || 1)).addHandler(method, add);');
+    }
+
     // The turtle previews run the selected repo's Python file through Skulpt.
     async function runTurtleProject() {
       const entry = entryFile();
@@ -207,9 +226,16 @@
         return;
       }
       const source = await fetchText(entry.path, branchName);
+      // Skulpt's time module has time.time(), not time.monotonic().
+      // These adaptations affect only the preview copy, not GitHub's Python file.
+      const browserSource = project === "minesweeper"
+        ? source.replace(/\bturtle\.setup\s*\(/, "turtle.Screen().setup(")
+          .replaceAll("time.monotonic()", "time.time()")
+        : source;
       terminal.textContent = "";
       terminal.hidden = false;
       turtleStage.hidden = false;
+      window.Sk.TurtleGraphics?.reset?.();
       turtleStage.replaceChildren();
       controls.replaceChildren();
       runButton.disabled = true;
@@ -217,7 +243,7 @@
       const builtinRead = (path) => {
         const builtin = window.Sk.builtinFiles && window.Sk.builtinFiles.files[path];
         if (builtin === undefined) throw new Error(`Python runtime file not found: '${path}'`);
-        return builtin;
+        return compatibleTurtleModule(path, builtin);
       };
       window.Sk.execLimit = 40000;
       window.Sk.inputfunTakesPrompt = true;
@@ -253,9 +279,13 @@
       });
       window.Sk.TurtleGraphics = window.Sk.TurtleGraphics || {};
       window.Sk.TurtleGraphics.target = turtleStage.id;
+      window.Sk.TurtleGraphics.width = 800;
+      window.Sk.TurtleGraphics.height = project === "minesweeper" ? 880 : 700;
+      window.Sk.TurtleGraphics.animate = false; // Fast initial rendering of hundreds of tiles/sprites.
       try {
-        await window.Sk.misceval.asyncToPromise(() => window.Sk.importMainWithBody("<stdin>", false, source, true));
-        setStatus("Program finished");
+        await window.Sk.misceval.asyncToPromise(() => window.Sk.importMainWithBody("<stdin>", false, browserSource, true));
+        turtleStage.focus(); // Arrow keys, A/D and Space require focus in Skulpt.
+        setStatus("Preview running");
       } catch (error) {
         appendTerminal(`\n[Preview error] ${error && error.toString ? error.toString() : String(error)}\n\nThis browser runtime supports basic Python and Turtle, not every desktop Python feature. The complete source remains available in the code panel.\n`);
         setStatus("Preview stopped");
@@ -270,9 +300,13 @@
       resetButton.hidden = false;
       clearButton.hidden = false;
       turtleStage.hidden = false;
+      turtleStage.tabIndex = 0;
+      turtleStage.addEventListener("contextmenu", (event) => event.preventDefault());
       terminal.hidden = false;
       replaceTerminal("Turtle preview ready. Click Run Python to launch the project in this browser window.\n\nTip: this is a browser-based Python interpreter, so features that depend on desktop-only APIs may not work exactly like they do on your computer.");
-      footnote.textContent = "Python/Turtle runs in the browser. If a desktop-only feature fails, use the GitHub link to run the original locally.";
+      footnote.textContent = project === "minesweeper"
+        ? "Left-click to reveal; right-click to flag. Scroll inside the Turtle window for the full board. GitHub source is unchanged."
+        : "Click the Turtle window for keyboard focus. Move with ←/→ or A/D; shoot with Space. GitHub source is unchanged.";
       runButton.addEventListener("click", () => {
         runTurtleProject().catch((error) => {
           appendTerminal(`\n[Preview error] ${error.message}\n`);
@@ -281,6 +315,7 @@
         });
       });
       resetButton.addEventListener("click", () => {
+        window.Sk?.TurtleGraphics?.reset?.();
         turtleStage.replaceChildren();
         controls.replaceChildren();
         replaceTerminal("Preview cleared. Click Run Python to start again.");
@@ -485,6 +520,7 @@
         possibleWords = [];
       }
       if (!possibleWords.length) possibleWords = fallbacks;
+      possibleWords.forEach((word) => validWords.add(word));
       state.solution = possibleWords[Math.floor(Math.random() * possibleWords.length)] || "CRANE";
 
       function feedback(guess) {
@@ -507,7 +543,7 @@
           ""
         ];
         state.guesses.forEach((guess, index) => lines.push(`${index + 1}. ${guess}   ${feedback(guess)}`));
-        while (state.guesses.length < 6 && state.guesses.length > 0) lines.push("   _ _ _ _ _");
+        for (let i = state.guesses.length; i < 6; i += 1) lines.push("   _ _ _ _ _");
         if (state.message) { lines.push("", state.message); }
         if (state.guesses.some((guess) => guess === state.solution) || state.guesses.length >= 6) {
           lines.push(`Answer: ${state.solution}`);
@@ -528,15 +564,16 @@
       const submit = document.createElement("button");
       submit.type = "submit";
       submit.className = "console-control primary";
-      submit.textContent = "Enter";
+      submit.textContent = "Enter Word";
       form.append(prompt, input, submit);
       function ended() { return state.guesses.some((guess) => guess === state.solution) || state.guesses.length >= 6; }
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const guess = input.value.trim().toUpperCase();
         if (!/^[A-Z]{5}$/.test(guess)) state.message = "Enter exactly five letters.";
-        else if (validWords.size && !validWords.has(guess) && !possibleWords.includes(guess)) state.message = "That word isn't in the valid-guess list.";
-        else if (ended()) state.message = "Game over. Reset to play again.";
+        else if (ended()) state.message = "Game over. Start a new word to play again.";
+        else if (state.guesses.includes(guess)) state.message = "You already tried that word.";
+        else if (!validWords.has(guess)) state.message = "That word isn't in the valid-guess list.";
         else {
           state.guesses.push(guess);
           if (guess === state.solution) state.message = "Nice! You found the word.";
@@ -544,7 +581,7 @@
           else state.message = "Try another word.";
         }
         render();
-        input.value = "";
+        if (state.guesses.includes(guess)) input.value = "";
         input.disabled = ended();
         submit.disabled = ended();
       });
@@ -562,10 +599,33 @@
     }
 
     function setupTicTacToePreview() {
-      previewHeading.textContent = "Terminal · Tic-Tac-Toe";
-      footnote.textContent = "Browser demo: play as X against a small minimax-based O opponent. Original Python variants are in the file list.";
-      const state = { board: Array(9).fill(""), over: false, message: "You are X. Choose a square (1–9)." };
+      previewHeading.textContent = "Tic-Tac-Toe";
+      footnote.textContent = "Play X against the computer (O). Choose an empty square; start a New Game to play again.";
+      terminal.hidden = true;
+      const state = { board: Array(9).fill(""), over: false };
       const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+      const game = document.createElement("div");
+      game.className = "ttt-preview";
+      const message = document.createElement("div");
+      message.className = "ttt-status";
+      message.setAttribute("role", "status");
+      message.setAttribute("aria-live", "polite");
+      const boardElement = document.createElement("div");
+      boardElement.className = "ttt-board";
+      boardElement.setAttribute("role", "group");
+      boardElement.setAttribute("aria-label", "Tic-Tac-Toe board");
+      const cells = Array.from({ length: 9 }, (_, index) => {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "ttt-cell";
+        cell.addEventListener("click", () => play(index));
+        boardElement.appendChild(cell);
+        return cell;
+      });
+      game.append(message, boardElement);
+      controls.before(game);
+      controls.replaceChildren(makeButton("New Game", restart, { primary: true }));
+
       function winner(board) {
         for (const [a,b,c] of lines) if (board[a] && board[a] === board[b] && board[b] === board[c]) return board[a];
         return board.every(Boolean) ? "tie" : "";
@@ -591,43 +651,36 @@
         for (let i = 0; i < 9; i += 1) {
           if (state.board[i]) continue;
           state.board[i] = "O";
-          const score = minimax(state.board, false, 0);
+          const score = minimax(state.board, false);
           state.board[i] = "";
           if (score > best) { best = score; pick = i; }
         }
         if (pick >= 0) state.board[pick] = "O";
       }
-      function boardText() {
-        const cells = state.board.map((value, index) => value || String(index + 1));
-        return `${cells[0]} | ${cells[1]} | ${cells[2]}\n--+---+--\n${cells[3]} | ${cells[4]} | ${cells[5]}\n--+---+--\n${cells[6]} | ${cells[7]} | ${cells[8]}`;
-      }
       function render() {
         const outcome = winner(state.board);
-        let message = state.message;
-        if (outcome === "X") message = "You win!";
-        else if (outcome === "O") message = "O wins this round.";
-        else if (outcome === "tie") message = "It's a tie.";
         state.over = Boolean(outcome);
-        replaceTerminal(`TIC-TAC-TOE // X vs O\n────────────────────\n${boardText()}\n\n${message}`);
-        controls.replaceChildren();
-        for (let i = 0; i < 9; i += 1) {
-          const button = makeButton(`${i + 1}: ${state.board[i] || "·"}`, () => play(i), { primary: !state.board[i] });
-          button.disabled = state.over || Boolean(state.board[i]);
-          controls.appendChild(button);
-        }
-        controls.appendChild(makeButton("Restart", restart));
+        message.textContent = outcome === "X" ? "You win! X takes the game."
+          : outcome === "O" ? "Computer wins! O takes the game."
+          : outcome === "tie" ? "Draw! No squares left."
+          : "Your turn — X";
+        cells.forEach((cell, index) => {
+          const mark = state.board[index];
+          cell.textContent = mark;
+          cell.dataset.mark = mark;
+          cell.disabled = state.over || Boolean(mark);
+          cell.setAttribute("aria-label", `Row ${Math.floor(index / 3) + 1}, column ${index % 3 + 1}: ${mark || "empty"}`);
+        });
       }
       function play(index) {
         if (state.over || state.board[index]) return;
         state.board[index] = "X";
         if (!winner(state.board)) bestMove();
-        state.message = "Your move: choose another square.";
         render();
       }
       function restart() {
         state.board = Array(9).fill("");
         state.over = false;
-        state.message = "You are X. Choose a square (1–9).";
         render();
       }
       render();
